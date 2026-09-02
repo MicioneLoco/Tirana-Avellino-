@@ -1,0 +1,332 @@
+{
+  "Super Modificatore & Centrocampo (442)": {
+    "POR": [
+      {
+        "target_crediti": 35.0,
+        "etichetta": "Titolare"
+      },
+      {
+        "target_crediti": 4.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "2° del Titolare"
+      }
+    ],
+    "DIF": [
+      {
+        "target_crediti": 35.0,
+        "etichetta": "UltraTop Mod."
+      },
+      {
+        "target_crediti": 25.0,
+        "etichetta": "Top Mod."
+      },
+      {
+        "target_crediti": 8.0,
+        "etichetta": "Titolare MV Alta"
+      },
+      {
+        "target_crediti": 4.0,
+        "etichetta": "Titolare MV Alta"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "Rincalzo"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      }
+    ],
+    "CEN": [
+      {
+        "target_crediti": 60.0,
+        "etichetta": "UltraTop"
+      },
+      {
+        "target_crediti": 45.0,
+        "etichetta": "SemiTop"
+      },
+      {
+        "target_crediti": 30.0,
+        "etichetta": "Titolare Bonus"
+      },
+      {
+        "target_crediti": 18.0,
+        "etichetta": "Titolare Fisso"
+      },
+      {
+        "target_crediti": 8.0,
+        "etichetta": "Copertura"
+      },
+      {
+        "target_crediti": 2.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      }
+    ],
+    "ATT": [
+      {
+        "target_crediti": 110.0,
+        "etichetta": "1° Slot Medio"
+      },
+      {
+        "target_crediti": 60.0,
+        "etichetta": "2° Slot Forte"
+      },
+      {
+        "target_crediti": 35.0,
+        "etichetta": "2° / 3° Slot"
+      },
+      {
+        "target_crediti": 10.0,
+        "etichetta": "Scommessa"
+      },
+      {
+        "target_crediti": 4.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      }
+    ]
+  },
+  "Standard Equilibrata (442)": {
+    "POR": [
+      {
+        "target_crediti": 35.0,
+        "etichetta": "Titolare Big"
+      },
+      {
+        "target_crediti": 4.0,
+        "etichetta": "2° del Titolare / CoTit."
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "3° del Titolare"
+      }
+    ],
+    "DIF": [
+      {
+        "target_crediti": 28.0,
+        "etichetta": "Top Mod."
+      },
+      {
+        "target_crediti": 14.0,
+        "etichetta": "2° Slot Mod."
+      },
+      {
+        "target_crediti": 8.0,
+        "etichetta": "Titolare MV"
+      },
+      {
+        "target_crediti": 6.0,
+        "etichetta": "Titolare Regolare"
+      },
+      {
+        "target_crediti": 2.0,
+        "etichetta": "Copertura"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      }
+    ],
+    "CEN": [
+      {
+        "target_crediti": 55.0,
+        "etichetta": "Top con Rigori"
+      },
+      {
+        "target_crediti": 35.0,
+        "etichetta": "SemiTop con Bonus"
+      },
+      {
+        "target_crediti": 26.0,
+        "etichetta": "Tit. con Inserimenti"
+      },
+      {
+        "target_crediti": 16.0,
+        "etichetta": "Titolare Fisso (442)"
+      },
+      {
+        "target_crediti": 8.0,
+        "etichetta": "Rincalzo Tit."
+      },
+      {
+        "target_crediti": 3.0,
+        "etichetta": "Copertura"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      }
+    ],
+    "ATT": [
+      {
+        "target_crediti": 150.0,
+        "etichetta": "Super Top 1° Slot"
+      },
+      {
+        "target_crediti": 65.0,
+        "etichetta": "2° Slot Solido"
+      },
+      {
+        "target_crediti": 25.0,
+        "etichetta": "3° Slot / Titolare"
+      },
+      {
+        "target_crediti": 10.0,
+        "etichetta": "Scommessa / Ruotabile"
+      },
+      {
+        "target_crediti": 4.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      }
+    ]
+  },
+  "All In Attacco (433)": {
+    "POR": [
+      {
+        "target_crediti": 25.0,
+        "etichetta": "Incrocio LowCost"
+      },
+      {
+        "target_crediti": 4.0,
+        "etichetta": "2° Incrocio"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "3° Incrocio / 2° Tit."
+      }
+    ],
+    "DIF": [
+      {
+        "target_crediti": 22.0,
+        "etichetta": "Top Mod."
+      },
+      {
+        "target_crediti": 10.0,
+        "etichetta": "Titolare MV Alta"
+      },
+      {
+        "target_crediti": 8.0,
+        "etichetta": "Titolare MV Alta"
+      },
+      {
+        "target_crediti": 5.0,
+        "etichetta": "Titolare"
+      },
+      {
+        "target_crediti": 2.0,
+        "etichetta": "Copertura"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      }
+    ],
+    "CEN": [
+      {
+        "target_crediti": 48.0,
+        "etichetta": "Top Mediana da Bonus"
+      },
+      {
+        "target_crediti": 30.0,
+        "etichetta": "SemiTop Inserimenti"
+      },
+      {
+        "target_crediti": 25.0,
+        "etichetta": "Titolare Fisso"
+      },
+      {
+        "target_crediti": 15.0,
+        "etichetta": "Titolare Regolare"
+      },
+      {
+        "target_crediti": 8.0,
+        "etichetta": "Copertura"
+      },
+      {
+        "target_crediti": 2.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      }
+    ],
+    "ATT": [
+      {
+        "target_crediti": 160.0,
+        "etichetta": "Super Top 1° Slot"
+      },
+      {
+        "target_crediti": 80.0,
+        "etichetta": "1° / 2° Slot Alto"
+      },
+      {
+        "target_crediti": 35.0,
+        "etichetta": "3° Slot Titolare"
+      },
+      {
+        "target_crediti": 10.0,
+        "etichetta": "Scommessa"
+      },
+      {
+        "target_crediti": 4.0,
+        "etichetta": "LowCost"
+      },
+      {
+        "target_crediti": 1.0,
+        "etichetta": "LowCost"
+      }
+    ]
+  }
+}
