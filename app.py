@@ -88,6 +88,11 @@ else:
 
 df.columns = [c.strip() for c in df.columns]
 
+# retrocompatibilità: se il CSV caricato è nel formato vecchio (senza le colonne nuove), le aggiungiamo vuote
+for col, default in [("Affidabilita", "n/d"), ("Prossimo_avversario", "-"), ("Indisponibile", False), ("Motivo_indisponibilita", "")]:
+    if col not in df.columns:
+        df[col] = default
+
 # --------------------------------------------------------------------------
 # STATO ASTA (persiste durante la sessione)
 # --------------------------------------------------------------------------
@@ -131,6 +136,7 @@ with st.sidebar:
         index=0,
     )
     top_n = st.slider("Quanti mostrarne", 5, 600, 30)
+    nascondi_indisponibili = st.checkbox("Nascondi infortunati/squalificati", value=True)
 
 # applica filtri
 f = df.copy()
@@ -141,6 +147,8 @@ if squadra_sel:
 f = f[(f["Prezzo"] >= prezzo_range[0]) & (f["Prezzo"] <= prezzo_range[1])]
 if ricerca:
     f = f[f["Nome"].str.contains(ricerca, case=False, na=False)]
+if nascondi_indisponibili:
+    f = f[~f["Indisponibile"].astype(bool)]
 f = f.sort_values(ordina_per, ascending=False).head(top_n)
 
 # --------------------------------------------------------------------------
@@ -161,7 +169,8 @@ tab1, tab2, tab3, tab4 = st.tabs(["📋 Classifica", "📈 Prezzo vs Valore atte
 
 with tab1:
     st.dataframe(
-        f[["Nome", "Ruolo", "Squadra", "Prezzo", "FVM", "Pt_giornata", "Valore_stagionale", "Valore_per_credito"]],
+        f[["Nome", "Ruolo", "Squadra", "Prezzo", "FVM", "Pt_giornata", "Valore_stagionale",
+           "Valore_per_credito", "Affidabilita", "Prossimo_avversario"]],
         use_container_width=True,
         hide_index=True,
         column_config={
@@ -175,6 +184,11 @@ with tab1:
                 min_value=0,
                 max_value=float(df["Valore_per_credito"].max()) if len(df) else 1,
             ),
+            "Affidabilita": st.column_config.TextColumn(
+                "Affidabilità",
+                help="Quanto ci si può fidare della proiezione, in base a quante partite ha già giocato in stagione: Bassa = meno di 3 presenze, Media = 3-7, Alta = 8+.",
+            ),
+            "Prossimo_avversario": st.column_config.TextColumn("Prossimo avversario"),
         },
     )
 
@@ -293,7 +307,7 @@ with tab3:
         squadre_possedute = [p["Squadra"] for p in miei]
         matrice_compat = load_compatibilita()
 
-        pool = df[(~df["Nome"].isin(tutti_presi)) & (df["Ruolo"] == ruolo_focus)].copy()
+        pool = df[(~df["Nome"].isin(tutti_presi)) & (df["Ruolo"] == ruolo_focus) & (~df["Indisponibile"].astype(bool))].copy()
         pool["Compatibilità con la rosa"] = pool["Squadra"].apply(
             lambda sq: compatibilita_media(sq, squadre_possedute, matrice_compat)
         )
