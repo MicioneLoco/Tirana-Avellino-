@@ -64,31 +64,29 @@ st.markdown('<p class="subtitle">Motore di valutazione giocatori — Fantacalcio
 st.write("")
 
 # --------------------------------------------------------------------------
-# CARICAMENTO DATI
+# CARICAMENTO DATI (automatico — aggiornato ogni giorno da GitHub Actions)
 # --------------------------------------------------------------------------
-with st.sidebar:
-    st.header("📂 Dati")
-    uploaded = st.file_uploader(
-        "Carica il CSV aggiornato (esportato dal notebook Colab)",
-        type=["csv"],
-        help="Se non carichi nulla, viene mostrato l'ultimo dato disponibile nell'app.",
-    )
-    st.caption("Aggiorna qui ogni volta che rilanci la pipeline dati — non serve toccare GitHub.")
+import os
+from datetime import datetime
 
-@st.cache_data
+@st.cache_data(ttl=600)
 def load_default():
     return pd.read_csv("results_sample.csv")
 
-if uploaded is not None:
-    df = pd.read_csv(uploaded)
-    st.sidebar.success(f"✅ {len(df)} giocatori caricati dal tuo file")
-else:
-    df = load_default()
-    st.sidebar.info("ℹ️ Stai vedendo i dati di esempio inclusi nell'app — carica il tuo CSV per i dati reali.")
+df = load_default()
+
+with st.sidebar:
+    st.header("📂 Dati")
+    try:
+        ultimo_agg = datetime.fromtimestamp(os.path.getmtime("results_sample.csv")).strftime("%d/%m/%Y %H:%M")
+        st.caption(f"🔄 Aggiornati automaticamente ogni giorno · ultimo aggiornamento: {ultimo_agg}")
+    except FileNotFoundError:
+        st.caption("🔄 Aggiornati automaticamente ogni giorno")
+    st.caption(f"{len(df)} giocatori nel database")
 
 df.columns = [c.strip() for c in df.columns]
 
-# retrocompatibilità: se il CSV caricato è nel formato vecchio (senza le colonne nuove), le aggiungiamo vuote
+# retrocompatibilità: se il CSV è nel formato vecchio (senza le colonne nuove), le aggiungiamo vuote
 for col, default in [("Affidabilita", "n/d"), ("Prossimo_avversario", "-"), ("Indisponibile", False), ("Motivo_indisponibilita", "")]:
     if col not in df.columns:
         df[col] = default
@@ -165,7 +163,9 @@ st.write("")
 # --------------------------------------------------------------------------
 # TABELLA PRINCIPALE
 # --------------------------------------------------------------------------
-tab1, tab2, tab3, tab4 = st.tabs(["📋 Classifica", "📈 Prezzo vs Valore atteso", "🎯 Assistente Asta", "🤝 Abbinamenti"])
+tab3, tab5, tab1, tab2, tab4 = st.tabs(
+    ["🎯 Assistente Asta", "🧤 Formazione schierata", "📋 Classifica", "📈 Prezzo vs Valore atteso", "🤝 Abbinamenti"]
+)
 
 with tab1:
     st.dataframe(
@@ -333,6 +333,80 @@ with tab3:
         else:
             st.caption("La compatibilità comparirà appena avrai in rosa almeno un giocatore.")
 
+with tab5:
+    st.caption("La formazione titolare che faresti oggi con i giocatori che hai già preso — scelta in automatico in base alla proiezione di giornata.")
+
+    if not miei:
+        st.info("Non hai ancora registrato nessun giocatore tuo. Registrali nella tab '🎯 Assistente Asta'.")
+    else:
+        moduli = {
+            "4-3-3": {"D": 4, "C": 3, "A": 3},
+            "4-4-2": {"D": 4, "C": 4, "A": 2},
+            "3-5-2": {"D": 3, "C": 5, "A": 2},
+            "3-4-3": {"D": 3, "C": 4, "A": 3},
+            "4-5-1": {"D": 4, "C": 5, "A": 1},
+            "5-3-2": {"D": 5, "C": 3, "A": 2},
+        }
+        modulo_scelto = st.selectbox("Modulo", list(moduli.keys()), index=0)
+        richiesti = {"P": 1, **moduli[modulo_scelto]}
+
+        # arricchisco i miei giocatori con la proiezione di giornata (Pt_giornata) dal database
+        miei_nomi = [p["Nome"] for p in miei]
+        miei_con_stats = df[df["Nome"].isin(miei_nomi)].copy()
+
+        titolari = {}
+        panchina = []
+        for ruolo, quanti in richiesti.items():
+            candidati = miei_con_stats[miei_con_stats["Ruolo"] == ruolo].sort_values("Pt_giornata", ascending=False)
+            titolari[ruolo] = candidati.head(quanti).to_dict("records")
+            panchina.extend(candidati.iloc[quanti:].to_dict("records"))
+
+        def badge(giocatore):
+            if giocatore is None:
+                return '<div class="player-badge empty">Vuoto</div>'
+            indisp = " 🚑" if giocatore.get("Indisponibile") else ""
+            return (
+                f'<div class="player-badge"><b>{giocatore["Nome"]}</b>{indisp}<br>'
+                f'<span style="font-size:11px;opacity:0.75">{giocatore["Squadra"]} · {giocatore["Pt_giornata"]:.1f} pt</span></div>'
+            )
+
+        st.markdown("""
+        <style>
+        .pitch {
+            background: repeating-linear-gradient(0deg, #1a6b3c, #1a6b3c 40px, #1c7a43 40px, #1c7a43 80px);
+            border: 3px solid rgba(255,255,255,0.4);
+            border-radius: 12px;
+            padding: 24px 12px;
+            display: flex; flex-direction: column; justify-content: space-between;
+            gap: 18px; min-height: 480px;
+        }
+        .pitch-row { display: flex; justify-content: space-evenly; gap: 8px; flex-wrap: wrap; }
+        .player-badge {
+            background: rgba(15, 23, 42, 0.85); color: white;
+            border: 1px solid rgba(255,255,255,0.3); border-radius: 10px;
+            padding: 6px 10px; text-align: center; min-width: 92px;
+        }
+        .player-badge.empty { opacity: 0.5; font-style: italic; }
+        </style>
+        """, unsafe_allow_html=True)
+
+        righe_html = ""
+        for ruolo in ["A", "C", "D", "P"]:
+            giocatori_riga = titolari.get(ruolo, [])
+            quanti = richiesti[ruolo]
+            slot_html = "".join(badge(giocatori_riga[i] if i < len(giocatori_riga) else None) for i in range(quanti))
+            righe_html += f'<div class="pitch-row">{slot_html}</div>'
+
+        st.markdown(f'<div class="pitch">{righe_html}</div>', unsafe_allow_html=True)
+
+        mancanti = [r for r in richiesti if len(titolari.get(r, [])) < richiesti[r]]
+        if mancanti:
+            st.warning(f"Ti mancano ancora giocatori per completare: {', '.join(mancanti)}.")
+
+        if panchina:
+            st.write("**In panchina:**")
+            st.dataframe(pd.DataFrame(panchina)[["Nome", "Ruolo", "Squadra", "Pt_giornata"]], hide_index=True, use_container_width=True)
+
 with tab4:
     st.caption("Compatibilità tra squadre (calendario/turni) — dalla tua matrice reale. Più alto = si abbinano meglio (utile per staffette portiere, coperture, o evitare due giocatori sempre 'spenti' nella stessa giornata).")
     matrice_compat = load_compatibilita()
@@ -355,4 +429,4 @@ with tab4:
         matrice_display = matrice_compat.rename(index=codice_to_nome, columns=codice_to_nome)
         st.dataframe(matrice_display, use_container_width=True)
 
-st.caption("I dati mostrati sono generati dalla pipeline statistica collegata a Understat + le regole della tua lega. Carica un CSV nuovo dalla barra laterale per aggiornarli.")
+st.caption("I dati mostrati sono generati dalla pipeline statistica collegata a Understat + le regole della tua lega, e si aggiornano da soli ogni giorno.")
