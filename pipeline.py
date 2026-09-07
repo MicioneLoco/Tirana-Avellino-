@@ -110,13 +110,34 @@ def calcola_forza_squadre_e_prossimo_avversario(schedule: pd.DataFrame, squadra_
 
 
 def costruisci_mappa_squadre(squadre_listone, squadre_understat):
-    """Abbina ogni squadra del listone al nome corrispondente usato da Understat (possono scriversi diversamente)."""
+    """Abbina ogni squadra del listone al nome corrispondente usato da Understat.
+    Le squadre sono un elenco fisso e corto: prima proviamo il confronto esatto
+    (dopo normalizzazione), che copre quasi tutti i casi reali ed è a prova di
+    errore. Solo per chi resta senza abbinamento proviamo una somiglianza più
+    stretta, assegnando ogni squadra Understat una volta sola (mai due squadre
+    del listone sullo stesso nome Understat)."""
     mappa = {}
-    nomi_understat_norm = {norm(s): s for s in squadre_understat}
+    usati = set()
+    nomi_understat_norm = {}
+    for s in squadre_understat:
+        nomi_understat_norm.setdefault(norm(s), s)
+
+    rimasti = []
     for s in squadre_listone:
-        match = get_close_matches(norm(s), list(nomi_understat_norm.keys()), n=1, cutoff=0.5)
+        n = norm(s)
+        if n in nomi_understat_norm:
+            mappa[s] = nomi_understat_norm[n]
+            usati.add(n)
+        else:
+            rimasti.append(s)
+
+    disponibili = {n: orig for n, orig in nomi_understat_norm.items() if n not in usati}
+    for s in rimasti:
+        match = get_close_matches(norm(s), list(disponibili.keys()), n=1, cutoff=0.85)
         if match:
-            mappa[s] = nomi_understat_norm[match[0]]
+            mappa[s] = disponibili[match[0]]
+            del disponibili[match[0]]
+
     return mappa
 
 
@@ -187,6 +208,8 @@ def main():
     squadre_understat = pd.unique(pd.concat([schedule["home_team"], schedule["away_team"], stats["team"]])).tolist()
     mappa_squadre = costruisci_mappa_squadre(squadre_listone, squadre_understat)
     non_mappate = [s for s in squadre_listone if s not in mappa_squadre]
+    print(f"ℹ️  Squadre Understat trovate ({len(squadre_understat)}): {sorted(squadre_understat)}")
+    print(f"ℹ️  Mappa squadra listone → Understat: {mappa_squadre}")
     if non_mappate:
         print(f"⚠️  Squadre del listone NON abbinate a Understat (avversario/forza mancanti per loro): {non_mappate}")
     else:
@@ -210,13 +233,23 @@ def main():
             return None  # non troviamo nemmeno la squadra: meglio escludere che indovinare
         candidati = stats[stats["team"] == squadra_understat]
         if candidati.empty:
-            return None  # niente ripiego su tutta la lega: evita di agganciare il giocatore sbagliato
+            return None
         nomi = candidati["player"].tolist()
-        match = get_close_matches(norm(nome_listone), [norm(n) for n in nomi], n=1, cutoff=0.75)
+        nomi_norm = [norm(n) for n in nomi]
+        target = norm(nome_listone)
+
+        # 1) contenimento diretto (es. "calhanoglu" dentro "hakan calhanoglu") — il caso più comune
+        #    e il più affidabile: il listone spesso ha solo il cognome, Understat il nome completo.
+        contenuti = [n for n in nomi_norm if target in n or n in target]
+        if len(contenuti) == 1:
+            return nomi[nomi_norm.index(contenuti[0])]
+        pool_nomi = contenuti if contenuti else nomi_norm
+
+        # 2) altrimenti somiglianza approssimata, ma solo dentro la squadra giusta (mai su tutta la lega)
+        match = get_close_matches(target, pool_nomi, n=1, cutoff=0.6)
         if not match:
             return None
-        idx = [norm(n) for n in nomi].index(match[0])
-        return nomi[idx]
+        return nomi[nomi_norm.index(match[0])]
 
     risultati = []
     for _, row in listone.iterrows():
@@ -308,7 +341,9 @@ def main():
 
     df_out = pd.DataFrame(risultati).sort_values("Valore_per_credito", ascending=False)
     df_out.to_csv(OUTPUT_PATH, index=False)
-    print(f"✅ Scritto {OUTPUT_PATH} con {len(df_out)} giocatori")
+    print(f"✅ Scritto {OUTPUT_PATH} con {len(df_out)} giocatori (su {len(listone)} nel listone)")
+    if len(df_out) < 150:
+        print("⚠️  Il numero è più basso del solito (~250-350 attesi) — controlla i log sopra sulla mappa squadre.")
 
 
 if __name__ == "__main__":
