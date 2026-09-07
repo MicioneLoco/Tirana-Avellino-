@@ -1,4 +1,4 @@
+soccerdata==1.9.1
 pandas>=2.0
 openpyxl>=3.1
-soccerdata>=1.8
 unidecode>=1.3
