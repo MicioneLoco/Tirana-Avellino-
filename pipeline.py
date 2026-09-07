@@ -83,8 +83,10 @@ def carica_indisponibili():
         return {}
 
 
-def calcola_forza_squadre_e_prossimo_avversario(schedule: pd.DataFrame):
+def calcola_forza_squadre_e_prossimo_avversario(schedule: pd.DataFrame, squadra_map: dict):
     schedule = schedule.copy()
+    schedule["home_team"] = schedule["home_team"].map(lambda t: squadra_map.get(t, t))
+    schedule["away_team"] = schedule["away_team"].map(lambda t: squadra_map.get(t, t))
     giocate = schedule[schedule["is_result"] == True]  # noqa: E712
 
     righe = []
@@ -105,6 +107,17 @@ def calcola_forza_squadre_e_prossimo_avversario(schedule: pd.DataFrame):
             prossimo[m["away_team"]] = m["home_team"]
 
     return forza, media_lega_for, media_lega_against, prossimo
+
+
+def costruisci_mappa_squadre(squadre_listone, squadre_understat):
+    """Abbina ogni squadra del listone al nome corrispondente usato da Understat (possono scriversi diversamente)."""
+    mappa = {}
+    nomi_understat_norm = {norm(s): s for s in squadre_understat}
+    for s in squadre_listone:
+        match = get_close_matches(norm(s), list(nomi_understat_norm.keys()), n=1, cutoff=0.5)
+        if match:
+            mappa[s] = nomi_understat_norm[match[0]]
+    return mappa
 
 
 def difficolta_per_ruolo(squadra, prossimo, forza, media_for, media_against, ruolo):
@@ -169,7 +182,12 @@ def main():
     print("⏳ Scarico il calendario...")
     schedule = understat.read_schedule()
     schedule["date"] = pd.to_datetime(schedule["date"])
-    forza, media_for, media_against, prossimo = calcola_forza_squadre_e_prossimo_avversario(schedule)
+
+    squadre_listone = listone["Squadra"].unique().tolist()
+    squadre_understat = pd.unique(pd.concat([schedule["home_team"], schedule["away_team"]])).tolist()
+    mappa_squadre = costruisci_mappa_squadre(squadre_listone, squadre_understat)
+
+    forza, media_for, media_against, prossimo = calcola_forza_squadre_e_prossimo_avversario(schedule, mappa_squadre)
 
     try:
         forma_recente = calcola_forma_recente(understat, schedule)
@@ -239,7 +257,9 @@ def main():
         if ruolo in ("D", "P"):
             punteggio += modificatore_difesa(6.2)
 
-        mult_difficolta, avversario = difficolta_per_ruolo(squadra, prossimo, forza, media_for, media_against, ruolo)
+        mult_difficolta, avversario = difficolta_per_ruolo(
+            mappa_squadre.get(squadra, squadra), prossimo, forza, media_for, media_against, ruolo
+        )
         punteggio *= mult_difficolta
         punteggio *= prob_titolarita
 
@@ -253,11 +273,19 @@ def main():
         else:
             affidabilita = "Bassa"
 
+        if prob_titolarita >= 0.75:
+            stato = "Titolare"
+        elif prob_titolarita >= 0.4:
+            stato = "Ballottaggio"
+        else:
+            stato = "Riserva"
+
         risultati.append({
             "Nome": nome, "Ruolo": ruolo, "Squadra": squadra, "Prezzo": prezzo, "FVM": fvm,
             "Pt_giornata": round(punteggio, 2), "Valore_stagionale": valore_stagionale,
             "Valore_per_credito": valore_per_credito,
             "Affidabilita": affidabilita,
+            "Stato_titolarita": stato,
             "Prossimo_avversario": avversario or "-",
             "Indisponibile": bool(info_indisponibile),
             "Motivo_indisponibilita": info_indisponibile.get("motivo", "") if info_indisponibile else "",
