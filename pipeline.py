@@ -184,8 +184,13 @@ def main():
     schedule["date"] = pd.to_datetime(schedule["date"])
 
     squadre_listone = listone["Squadra"].unique().tolist()
-    squadre_understat = pd.unique(pd.concat([schedule["home_team"], schedule["away_team"]])).tolist()
+    squadre_understat = pd.unique(pd.concat([schedule["home_team"], schedule["away_team"], stats["team"]])).tolist()
     mappa_squadre = costruisci_mappa_squadre(squadre_listone, squadre_understat)
+    non_mappate = [s for s in squadre_listone if s not in mappa_squadre]
+    if non_mappate:
+        print(f"⚠️  Squadre del listone NON abbinate a Understat (avversario/forza mancanti per loro): {non_mappate}")
+    else:
+        print(f"✅ Tutte le {len(squadre_listone)} squadre del listone abbinate correttamente a Understat")
 
     forza, media_for, media_against, prossimo = calcola_forza_squadre_e_prossimo_avversario(schedule, mappa_squadre)
 
@@ -200,11 +205,14 @@ def main():
         print(f"⚠️  {len(indisponibili)} giocatori segnati come indisponibili")
 
     def trova_match(nome_listone, squadra_listone):
-        candidati = stats[stats["_squadra_norm"] == norm(squadra_listone)]
+        squadra_understat = mappa_squadre.get(squadra_listone)
+        if squadra_understat is None:
+            return None  # non troviamo nemmeno la squadra: meglio escludere che indovinare
+        candidati = stats[stats["team"] == squadra_understat]
         if candidati.empty:
-            candidati = stats
+            return None  # niente ripiego su tutta la lega: evita di agganciare il giocatore sbagliato
         nomi = candidati["player"].tolist()
-        match = get_close_matches(norm(nome_listone), [norm(n) for n in nomi], n=1, cutoff=0.55)
+        match = get_close_matches(norm(nome_listone), [norm(n) for n in nomi], n=1, cutoff=0.75)
         if not match:
             return None
         idx = [norm(n) for n in nomi].index(match[0])
@@ -290,6 +298,13 @@ def main():
             "Indisponibile": bool(info_indisponibile),
             "Motivo_indisponibilita": info_indisponibile.get("motivo", "") if info_indisponibile else "",
         })
+
+    if not risultati:
+        print("⚠️  Nessun giocatore abbinato correttamente — controlla i log sopra (mapping squadre/nomi).")
+        pd.DataFrame(columns=["Nome", "Ruolo", "Squadra", "Prezzo", "FVM", "Pt_giornata", "Valore_stagionale",
+                               "Valore_per_credito", "Affidabilita", "Stato_titolarita", "Prossimo_avversario",
+                               "Indisponibile", "Motivo_indisponibilita"]).to_csv(OUTPUT_PATH, index=False)
+        return
 
     df_out = pd.DataFrame(risultati).sort_values("Valore_per_credito", ascending=False)
     df_out.to_csv(OUTPUT_PATH, index=False)
