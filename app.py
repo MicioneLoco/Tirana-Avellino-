@@ -87,7 +87,7 @@ with st.sidebar:
 df.columns = [c.strip() for c in df.columns]
 
 # retrocompatibilità: se il CSV è nel formato vecchio (senza le colonne nuove), le aggiungiamo vuote
-for col, default in [("Affidabilita", "n/d"), ("Prossimo_avversario", "-"), ("Indisponibile", False), ("Motivo_indisponibilita", "")]:
+for col, default in [("Affidabilita", "n/d"), ("Stato_titolarita", "n/d"), ("Prossimo_avversario", "-"), ("Indisponibile", False), ("Motivo_indisponibilita", "")]:
     if col not in df.columns:
         df[col] = default
 
@@ -170,7 +170,7 @@ tab3, tab5, tab1, tab2, tab4 = st.tabs(
 with tab1:
     st.dataframe(
         f[["Nome", "Ruolo", "Squadra", "Prezzo", "FVM", "Pt_giornata", "Valore_stagionale",
-           "Valore_per_credito", "Affidabilita", "Prossimo_avversario"]],
+           "Valore_per_credito", "Affidabilita", "Stato_titolarita", "Prossimo_avversario"]],
         use_container_width=True,
         hide_index=True,
         column_config={
@@ -187,6 +187,10 @@ with tab1:
             "Affidabilita": st.column_config.TextColumn(
                 "Affidabilità",
                 help="Quanto ci si può fidare della proiezione, in base a quante partite ha già giocato in stagione: Bassa = meno di 3 presenze, Media = 3-7, Alta = 8+.",
+            ),
+            "Stato_titolarita": st.column_config.TextColumn(
+                "Titolarità",
+                help="Stima dal pattern minuti stagionale (Titolare/Ballottaggio/Riserva) — non è la probabile formazione ufficiale della settimana.",
             ),
             "Prossimo_avversario": st.column_config.TextColumn("Prossimo avversario"),
         },
@@ -307,11 +311,42 @@ with tab3:
         squadre_possedute = [p["Squadra"] for p in miei]
         matrice_compat = load_compatibilita()
 
-        pool = df[(~df["Nome"].isin(tutti_presi)) & (df["Ruolo"] == ruolo_focus) & (~df["Indisponibile"].astype(bool))].copy()
-        pool["Compatibilità con la rosa"] = pool["Squadra"].apply(
+        pool_base = df[(~df["Nome"].isin(tutti_presi)) & (df["Ruolo"] == ruolo_focus) & (~df["Indisponibile"].astype(bool))].copy()
+        pool_base["Compatibilità con la rosa"] = pool_base["Squadra"].apply(
             lambda sq: compatibilita_media(sq, squadre_possedute, matrice_compat)
         )
-        pool = pool.sort_values("Valore_per_credito", ascending=False).head(15)
+
+        # --- TOP 3 ABBINAMENTO con tutta la rosa già presa ---
+        top3_nomi = []
+        if miei:
+            top3 = pool_base.dropna(subset=["Compatibilità con la rosa"]).sort_values(
+                "Compatibilità con la rosa", ascending=False
+            ).head(3)
+            top3_nomi = top3["Nome"].tolist()
+
+            if len(top3):
+                st.markdown(f"**🔥 Top abbinamento con la tua rosa ({len(miei)} giocatori presi):**")
+                st.markdown("""
+                <style>
+                .abbinamento-card {
+                    background: linear-gradient(135deg, rgba(16,185,129,0.18), rgba(16,185,129,0.05));
+                    border: 1px solid rgba(16,185,129,0.5); border-radius: 12px;
+                    padding: 10px 14px; margin-bottom: 6px;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                cols = st.columns(len(top3))
+                for col, (_, r) in zip(cols, top3.iterrows()):
+                    with col:
+                        st.markdown(
+                            f'<div class="abbinamento-card"><b>🏅 {r["Nome"]}</b><br>'
+                            f'{r["Squadra"]} · {r["Prezzo"]:.0f} cr<br>'
+                            f'<span style="opacity:0.8">Val/credito: {r["Valore_per_credito"]:.2f} · Abbinamento medio: {r["Compatibilità con la rosa"]:.0f}%</span></div>',
+                            unsafe_allow_html=True,
+                        )
+                st.write("")
+
+        pool = pool_base[~pool_base["Nome"].isin(top3_nomi)].sort_values("Valore_per_credito", ascending=False).head(15)
         if slot_rimanenti_totali > 0:
             pool["Budget max consigliato"] = pool["Prezzo"].apply(lambda p: min(p, budget_max_ora))
 
@@ -319,6 +354,7 @@ with tab3:
         if slot_rimanenti_totali > 0:
             colonne.append("Budget max consigliato")
 
+        st.caption("Altri candidati per questo ruolo:")
         st.dataframe(
             pool[colonne], hide_index=True, use_container_width=True,
             column_config={
