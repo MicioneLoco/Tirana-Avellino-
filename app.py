@@ -135,6 +135,10 @@ with st.sidebar:
     )
     top_n = st.slider("Quanti mostrarne", 5, 600, 30)
     nascondi_indisponibili = st.checkbox("Nascondi infortunati/squalificati", value=True)
+    nascondi_bassa_affidabilita = st.checkbox(
+        "Nascondi affidabilità bassa", value=True,
+        help="Nasconde chi ha pochissime presenze reali — con un prezzo di 1-2 crediti, anche un punteggio modesto genera un 'valore/credito' finto-altissimo che falsa la classifica.",
+    )
 
 # applica filtri
 f = df.copy()
@@ -147,6 +151,8 @@ if ricerca:
     f = f[f["Nome"].str.contains(ricerca, case=False, na=False)]
 if nascondi_indisponibili:
     f = f[~f["Indisponibile"].astype(bool)]
+if nascondi_bassa_affidabilita:
+    f = f[f["Affidabilita"] != "Bassa"]
 f = f.sort_values(ordina_per, ascending=False).head(top_n)
 
 # --------------------------------------------------------------------------
@@ -311,7 +317,7 @@ with tab3:
         squadre_possedute = [p["Squadra"] for p in miei]
         matrice_compat = load_compatibilita()
 
-        pool_base = df[(~df["Nome"].isin(tutti_presi)) & (df["Ruolo"] == ruolo_focus) & (~df["Indisponibile"].astype(bool))].copy()
+        pool_base = df[(~df["Nome"].isin(tutti_presi)) & (df["Ruolo"] == ruolo_focus) & (~df["Indisponibile"].astype(bool)) & (df["Affidabilita"] != "Bassa")].copy()
         pool_base["Compatibilità con la rosa"] = pool_base["Squadra"].apply(
             lambda sq: compatibilita_media(sq, squadre_possedute, matrice_compat)
         )
