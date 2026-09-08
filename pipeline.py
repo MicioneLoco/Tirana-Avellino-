@@ -1,13 +1,16 @@
 """
-Pipeline v3: motore di proiezione con forma recente pesata, difficoltà
+Pipeline: motore di proiezione con forma recente pesata, difficoltà
 avversario, indicatore di affidabilità e gestione indisponibili.
 
 Nota onesta sul "voto reale": Fantacalcio.it non espone un'API pubblica
-stabile, e le librerie reverse-engineered che la usano sono fragili (possono
-rompersi ad ogni redesign del sito, e potrebbero avere le stesse protezioni
-anti-bot di FBref). Non la colleghiamo qui per non rischiare di rompere
-l'automazione che già funziona. Il voto resta una stima calibrata dalla
-produttività reale (xG/xA) — meno preciso di un voto vero, ma stabile.
+stabile, e le librerie reverse-engineered che la usano sono fragili. Non la
+colleghiamo qui per non rischiare di rompere l'automazione che già funziona.
+Il voto resta una stima calibrata dalla produttività reale (xG/xA).
+
+Nota sulle squadre: se Understat non ha ancora nel suo database una squadra
+della tua Serie A reale (es. neopromosse), i suoi giocatori restano esclusi
+finché Understat non si aggiorna — non inventiamo abbinamenti a squadre
+sbagliate, sarebbe un dato falso.
 """
 
 import json
@@ -83,6 +86,62 @@ def carica_indisponibili():
         return {}
 
 
+def costruisci_mappa_squadre(squadre_listone, squadre_understat):
+    """Abbina ogni squadra del listone al nome corrispondente usato da Understat.
+    Le squadre sono un elenco fisso e corto: prima proviamo il confronto esatto
+    (dopo normalizzazione), poi alcuni alias noti (nomi ufficiali più lunghi),
+    e solo alla fine una somiglianza più larga come ultima rete di sicurezza —
+    assegnando ogni squadra Understat una volta sola (mai due squadre del
+    listone sullo stesso nome Understat). Se una squadra del listone non è
+    nel database Understat (es. appena promossa e non ancora censita), resta
+    semplicemente esclusa dalla mappa: meglio niente dato che un dato falso."""
+    ALIAS_NOTI = {
+        "milan": ["ac milan", "milan"],
+        "parma": ["parma calcio 1913", "parma"],
+        "inter": ["inter milan", "internazionale", "inter"],
+        "roma": ["as roma", "roma"],
+        "genoa": ["genoa cfc", "genoa"],
+        "verona": ["hellas verona", "verona"],
+    }
+
+    mappa = {}
+    usati = set()
+    nomi_understat_norm = {}
+    for s in squadre_understat:
+        nomi_understat_norm.setdefault(norm(s), s)
+
+    rimasti = []
+    for s in squadre_listone:
+        n = norm(s)
+        if n in nomi_understat_norm:
+            mappa[s] = nomi_understat_norm[n]
+            usati.add(n)
+        else:
+            rimasti.append(s)
+
+    ancora_rimasti = []
+    for s in rimasti:
+        n = norm(s)
+        trovato = False
+        for alias in ALIAS_NOTI.get(n, []):
+            if alias in nomi_understat_norm and alias not in usati:
+                mappa[s] = nomi_understat_norm[alias]
+                usati.add(alias)
+                trovato = True
+                break
+        if not trovato:
+            ancora_rimasti.append(s)
+
+    disponibili = {n: orig for n, orig in nomi_understat_norm.items() if n not in usati}
+    for s in ancora_rimasti:
+        match = get_close_matches(norm(s), list(disponibili.keys()), n=1, cutoff=0.85)
+        if match:
+            mappa[s] = disponibili[match[0]]
+            del disponibili[match[0]]
+
+    return mappa
+
+
 def calcola_forza_squadre_e_prossimo_avversario(schedule: pd.DataFrame, squadra_map: dict):
     schedule = schedule.copy()
     schedule["home_team"] = schedule["home_team"].map(lambda t: squadra_map.get(t, t))
@@ -99,46 +158,16 @@ def calcola_forza_squadre_e_prossimo_avversario(schedule: pd.DataFrame, squadra_
     media_lega_against = forza["xg_against"].mean() if len(forza) else 1.3
 
     da_giocare = schedule[schedule["is_result"] == False].sort_values("date")  # noqa: E712
+    print(f"ℹ️  Partite future trovate nel calendario: {len(da_giocare)}")
     prossimo = {}
     for _, m in da_giocare.iterrows():
         if m["home_team"] not in prossimo:
             prossimo[m["home_team"]] = m["away_team"]
         if m["away_team"] not in prossimo:
             prossimo[m["away_team"]] = m["home_team"]
+    print(f"ℹ️  Squadre con un prossimo avversario noto: {len(prossimo)}")
 
     return forza, media_lega_for, media_lega_against, prossimo
-
-
-def costruisci_mappa_squadre(squadre_listone, squadre_understat):
-    """Abbina ogni squadra del listone al nome corrispondente usato da Understat.
-    Le squadre sono un elenco fisso e corto: prima proviamo il confronto esatto
-    (dopo normalizzazione), che copre quasi tutti i casi reali ed è a prova di
-    errore. Solo per chi resta senza abbinamento proviamo una somiglianza più
-    stretta, assegnando ogni squadra Understat una volta sola (mai due squadre
-    del listone sullo stesso nome Understat)."""
-    mappa = {}
-    usati = set()
-    nomi_understat_norm = {}
-    for s in squadre_understat:
-        nomi_understat_norm.setdefault(norm(s), s)
-
-    rimasti = []
-    for s in squadre_listone:
-        n = norm(s)
-        if n in nomi_understat_norm:
-            mappa[s] = nomi_understat_norm[n]
-            usati.add(n)
-        else:
-            rimasti.append(s)
-
-    disponibili = {n: orig for n, orig in nomi_understat_norm.items() if n not in usati}
-    for s in rimasti:
-        match = get_close_matches(norm(s), list(disponibili.keys()), n=1, cutoff=0.85)
-        if match:
-            mappa[s] = disponibili[match[0]]
-            del disponibili[match[0]]
-
-    return mappa
 
 
 def difficolta_per_ruolo(squadra, prossimo, forza, media_for, media_against, ruolo):
@@ -193,7 +222,7 @@ def main():
     listone = listone.dropna(subset=["Nome"]).reset_index(drop=True)
     print(f"✅ {len(listone)} giocatori nel listone")
 
-    understat = sd.Understat(leagues="ITA-Serie A", seasons="2025-2026")
+    understat = sd.Understat(leagues="ITA-Serie A", seasons="2026-2027")
 
     print("⏳ Scarico statistiche stagionali da Understat...")
     stats = understat.read_player_season_stats().reset_index()
@@ -211,7 +240,7 @@ def main():
     print(f"ℹ️  Squadre Understat trovate ({len(squadre_understat)}): {sorted(squadre_understat)}")
     print(f"ℹ️  Mappa squadra listone → Understat: {mappa_squadre}")
     if non_mappate:
-        print(f"⚠️  Squadre del listone NON abbinate a Understat (avversario/forza mancanti per loro): {non_mappate}")
+        print(f"⚠️  Squadre del listone NON abbinate a Understat (i loro giocatori saranno esclusi): {non_mappate}")
     else:
         print(f"✅ Tutte le {len(squadre_listone)} squadre del listone abbinate correttamente a Understat")
 
@@ -230,7 +259,7 @@ def main():
     def trova_match(nome_listone, squadra_listone):
         squadra_understat = mappa_squadre.get(squadra_listone)
         if squadra_understat is None:
-            return None  # non troviamo nemmeno la squadra: meglio escludere che indovinare
+            return None
         candidati = stats[stats["team"] == squadra_understat]
         if candidati.empty:
             return None
@@ -238,14 +267,11 @@ def main():
         nomi_norm = [norm(n) for n in nomi]
         target = norm(nome_listone)
 
-        # 1) contenimento diretto (es. "calhanoglu" dentro "hakan calhanoglu") — il caso più comune
-        #    e il più affidabile: il listone spesso ha solo il cognome, Understat il nome completo.
         contenuti = [n for n in nomi_norm if target in n or n in target]
         if len(contenuti) == 1:
             return nomi[nomi_norm.index(contenuti[0])]
         pool_nomi = contenuti if contenuti else nomi_norm
 
-        # 2) altrimenti somiglianza approssimata, ma solo dentro la squadra giusta (mai su tutta la lega)
         match = get_close_matches(target, pool_nomi, n=1, cutoff=0.6)
         if not match:
             return None
