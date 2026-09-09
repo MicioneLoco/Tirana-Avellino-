@@ -1,11 +1,19 @@
 import streamlit as st
 import pandas as pd
 import json
+import os
+from datetime import datetime
+
+st.set_page_config(
+    page_title="Fantacalcio AI",
+    page_icon="⚽",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 @st.cache_data
 def load_compatibilita():
-    c = pd.read_csv("team_compatibility.csv", index_col="Squadra")
-    return c
+    return pd.read_csv("team_compatibility.csv", index_col="Squadra")
 
 @st.cache_data
 def load_strategie():
@@ -31,13 +39,6 @@ def compatibilita_media(squadra_giocatore, squadre_possedute, matrice):
     if not codici_posseduti:
         return None
     return round(matrice.loc[codice, codici_posseduti].astype(float).mean(), 1)
-
-st.set_page_config(
-    page_title="Fantacalcio AI",
-    page_icon="⚽",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 
 # --------------------------------------------------------------------------
 # STILE
@@ -66,9 +67,6 @@ st.write("")
 # --------------------------------------------------------------------------
 # CARICAMENTO DATI (automatico — aggiornato ogni giorno da GitHub Actions)
 # --------------------------------------------------------------------------
-import os
-from datetime import datetime
-
 @st.cache_data(ttl=600)
 def load_default():
     return pd.read_csv("results_sample.csv")
@@ -86,17 +84,13 @@ with st.sidebar:
 
 df.columns = [c.strip() for c in df.columns]
 
-# retrocompatibilità: se il CSV è nel formato vecchio (senza le colonne nuove), le aggiungiamo vuote
 for col, default in [("Affidabilita", "n/d"), ("Stato_titolarita", "n/d"), ("Prossimo_avversario", "-"), ("Indisponibile", False), ("Motivo_indisponibilita", "")]:
     if col not in df.columns:
         df[col] = default
 
 # --------------------------------------------------------------------------
-# STATO ASTA (persiste durante la sessione)
+# REGOLE ROSA + STRATEGIA BUDGET
 # --------------------------------------------------------------------------
-if "picks" not in st.session_state:
-    st.session_state.picks = []  # ogni pick: {nome, ruolo, squadra, prezzo, chi}
-
 with st.sidebar:
     st.header("⚙️ Regole rosa")
     budget_totale = st.number_input("Crediti totali", value=500, step=10)
@@ -112,10 +106,6 @@ with st.sidebar:
     strategia_attiva = strategie[nome_strategia]
     st.caption("Definisce quanto puntare sul prossimo slot di ogni ruolo, presa dal tuo Excel di strategie.")
 
-# --------------------------------------------------------------------------
-# FILTRI
-# --------------------------------------------------------------------------
-with st.sidebar:
     st.header("🔍 Filtri")
     ruoli_disponibili = sorted(df["Ruolo"].dropna().unique().tolist())
     ruolo_sel = st.multiselect("Ruolo", ruoli_disponibili, default=ruoli_disponibili)
@@ -167,7 +157,7 @@ c4.metric("Top pick", f.iloc[0]["Nome"] if len(f) else "-")
 st.write("")
 
 # --------------------------------------------------------------------------
-# TABELLA PRINCIPALE
+# TABS (Assistente Asta per primo: è la funzione principale)
 # --------------------------------------------------------------------------
 tab3, tab5, tab1, tab2, tab4 = st.tabs(
     ["🎯 Assistente Asta", "🧤 Formazione schierata", "📋 Classifica", "📈 Prezzo vs Valore atteso", "🤝 Abbinamenti"]
@@ -185,9 +175,7 @@ with tab1:
             "Pt_giornata": st.column_config.NumberColumn("Pt/giornata", format="%.2f"),
             "Valore_stagionale": st.column_config.NumberColumn("Valore stagionale", format="%.1f"),
             "Valore_per_credito": st.column_config.ProgressColumn(
-                "Valore/credito",
-                format="%.2f",
-                min_value=0,
+                "Valore/credito", format="%.2f", min_value=0,
                 max_value=float(df["Valore_per_credito"].max()) if len(df) else 1,
             ),
             "Affidabilita": st.column_config.TextColumn(
@@ -209,92 +197,59 @@ with tab2:
     )
     st.scatter_chart(chart_df, x="Prezzo (crediti)", y="Valore stagionale atteso", color="Ruolo")
 
+# --------------------------------------------------------------------------
+# ASSISTENTE ASTA
+# --------------------------------------------------------------------------
 with tab3:
-    st.caption("Segna chi prende chi durante l'asta — l'app ricalcola budget, slot rimasti, e ti aggiorna i migliori target ancora disponibili.")
+    st.caption("Registra i giocatori man mano che vengono presi (da te o dagli altri) e ricevi il consiglio sulla prossima mossa.")
 
-    colA, colB = st.columns([1, 1])
+    if "picks" not in st.session_state:
+        st.session_state.picks = []
 
-    # ---------------------------------------------------------------
-    # FORM: REGISTRA UN GIOCATORE PRESO
-    # ---------------------------------------------------------------
-    with colA:
-        st.subheader("➕ Registra un giocatore preso")
-        gia_presi = {p["Nome"] for p in st.session_state.picks}
-        disponibili = df[~df["Nome"].isin(gia_presi)].sort_values("Nome")
+    with st.form("registra_pick", clear_on_submit=True):
+        colA, colB, colC, colD, colE = st.columns([3, 2, 1, 1, 1.5])
+        with colA:
+            nome_pick = st.selectbox("Giocatore", df["Nome"].tolist(), index=None, placeholder="Cerca...")
+        with colB:
+            chi = st.selectbox("Chi lo prende", ["Io", "Un altro"])
+        with colC:
+            prezzo_pick = st.number_input("Prezzo pagato", min_value=1, value=1, step=1)
+        with colD:
+            submit = st.form_submit_button("➕ Registra")
+        with colE:
+            reset = st.form_submit_button("🗑️ Azzera tutto")
 
-        with st.form("form_pick", clear_on_submit=True):
-            nome_scelto = st.selectbox("Giocatore", disponibili["Nome"].tolist())
-            prezzo_pagato = st.number_input("Prezzo pagato (crediti)", min_value=1, value=1, step=1)
-            chi = st.radio("Chi lo ha preso?", ["Io", "Un'altra squadra"], horizontal=True)
-            submitted = st.form_submit_button("Registra")
-
-            if submitted:
-                riga = df[df["Nome"] == nome_scelto].iloc[0]
-                st.session_state.picks.append({
-                    "Nome": nome_scelto, "Ruolo": riga["Ruolo"], "Squadra": riga["Squadra"],
-                    "Prezzo": prezzo_pagato, "Chi": chi,
-                })
-                st.rerun()
-
-        c_reset, c_undo = st.columns(2)
-        if c_undo.button("↩️ Annulla ultimo") and st.session_state.picks:
-            st.session_state.picks.pop()
-            st.rerun()
-        if c_reset.button("🗑️ Azzera tutto"):
+        if submit and nome_pick:
+            riga = df[df["Nome"] == nome_pick].iloc[0]
+            st.session_state.picks.append({
+                "Nome": nome_pick, "Ruolo": riga["Ruolo"], "Squadra": riga["Squadra"],
+                "Prezzo": prezzo_pick, "Chi": chi,
+            })
+        if reset:
             st.session_state.picks = []
-            st.rerun()
 
-        st.write("")
-        st.subheader("💾 Salva / recupera l'asta")
-        st.caption("Se ricarichi la pagina perdi lo stato — scarica il progresso e ricaricalo per riprendere.")
-        import json
-        stato_json = json.dumps(st.session_state.picks, ensure_ascii=False, indent=2)
-        st.download_button("⬇️ Scarica progresso asta", stato_json, file_name="asta_in_corso.json", mime="application/json")
-        stato_caricato = st.file_uploader("⬆️ Ricarica un'asta salvata", type=["json"], key="carica_stato")
-        if stato_caricato is not None:
-            st.session_state.picks = json.load(stato_caricato)
-            st.rerun()
+    picks = st.session_state.picks
+    miei = [p for p in picks if p["Chi"] == "Io"]
+    tutti_presi = [p["Nome"] for p in picks]
 
-    # ---------------------------------------------------------------
-    # CALCOLO STATO ASTA
-    # ---------------------------------------------------------------
-    miei = [p for p in st.session_state.picks if p["Chi"] == "Io"]
-    tutti_presi = {p["Nome"] for p in st.session_state.picks}
-
-    speso = sum(p["Prezzo"] for p in miei)
-    budget_rimanente = budget_totale - speso
-
-    presi_per_ruolo = {r: sum(1 for p in miei if p["Ruolo"] == r) for r in SLOT}
-    slot_rimanenti = {r: max(SLOT[r] - presi_per_ruolo[r], 0) for r in SLOT}
+    budget_speso = sum(p["Prezzo"] for p in miei)
+    budget_rimanente = budget_totale - budget_speso
+    presi_per_ruolo = {r: len([p for p in miei if p["Ruolo"] == r]) for r in ["P", "D", "C", "A"]}
+    slot_rimanenti = {r: max(SLOT[r] - presi_per_ruolo[r], 0) for r in ["P", "D", "C", "A"]}
     slot_rimanenti_totali = sum(slot_rimanenti.values())
+    budget_max_ora = max(budget_rimanente - max(slot_rimanenti_totali - 1, 0), 0) if slot_rimanenti_totali else budget_rimanente
 
-    # riserva minima: 1 credito per ogni slot ancora da riempire (tranne quello che stai per comprare)
-    with colB:
-        st.subheader("📊 Situazione attuale")
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Budget rimanente", f"{budget_rimanente} cr.")
-        m2.metric("Slot da riempire", slot_rimanenti_totali)
-        m3.metric("Giocatori tuoi", len(miei))
+    mc1, mc2, mc3, mc4 = st.columns(4)
+    mc1.metric("Budget speso", f"{budget_speso}/{budget_totale}")
+    mc2.metric("Budget rimanente", budget_rimanente)
+    mc3.metric("Slot rimanenti", slot_rimanenti_totali)
+    mc4.metric("Budget max per slot ora", budget_max_ora)
 
-        st.write("**Slot rimanenti per ruolo:**")
-        st.write(" · ".join(f"{r}: {slot_rimanenti[r]}" for r in ["P", "D", "C", "A"]))
-
-        if slot_rimanenti_totali > 0:
-            riserva_minima = max(slot_rimanenti_totali - 1, 0) * 1
-            budget_max_ora = max(budget_rimanente - riserva_minima, 0)
-            st.metric("💰 Budget massimo spendibile ORA su un giocatore", f"{budget_max_ora} cr.",
-                       help="Budget rimanente meno una riserva minima di 1 credito per ogni altro slot ancora da riempire.")
-
-        if miei:
-            st.write("**La tua rosa finora:**")
-            st.dataframe(pd.DataFrame(miei)[["Nome", "Ruolo", "Squadra", "Prezzo"]], hide_index=True, use_container_width=True)
+    if miei:
+        st.write("**La tua rosa finora:**")
+        st.dataframe(pd.DataFrame(miei)[["Nome", "Ruolo", "Squadra", "Prezzo"]], hide_index=True, use_container_width=True)
 
     st.divider()
-
-    # ---------------------------------------------------------------
-    # TARGET SUGGERITI (dinamico, in base a cosa manca)
-    # ---------------------------------------------------------------
-    st.subheader("🎯 Migliori target ancora disponibili")
 
     ruoli_da_coprire = [r for r in ["P", "D", "C", "A"] if slot_rimanenti[r] > 0]
     if not ruoli_da_coprire:
@@ -302,7 +257,6 @@ with tab3:
     else:
         ruolo_focus = st.selectbox("Mostra target per ruolo", ruoli_da_coprire)
 
-        # target della strategia per il PROSSIMO slot di questo ruolo
         chiave_json = MAPPA_RUOLO_JSON[ruolo_focus]
         slot_gia_presi_ruolo = presi_per_ruolo[ruolo_focus]
         lista_slot_strategia = strategia_attiva.get(chiave_json, [])
@@ -322,15 +276,30 @@ with tab3:
             lambda sq: compatibilita_media(sq, squadre_possedute, matrice_compat)
         )
 
-        # --- TOP 3 ABBINAMENTO con tutta la rosa già presa ---
+        # --- TOP ABBINAMENTO con tutta la rosa già presa ---
+        # regola: massimo 1 titolare + 1 "cambio" per squadra, poi si diversifica sulle altre squadre
         top3_nomi = []
         if miei:
-            top3 = pool_base.dropna(subset=["Compatibilità con la rosa"]).sort_values(
-                "Compatibilità con la rosa", ascending=False
-            ).head(3)
-            top3_nomi = top3["Nome"].tolist()
+            pool_ordinato = pool_base.dropna(subset=["Compatibilità con la rosa"]).sort_values(
+                ["Compatibilità con la rosa", "Valore_per_credito"], ascending=[False, False]
+            )
 
-            if len(top3):
+            selezionati = []
+            conteggio_squadra = {}
+            for _, r in pool_ordinato.iterrows():
+                sq = r["Squadra"]
+                n_gia_presi = conteggio_squadra.get(sq, 0)
+                if n_gia_presi >= 2:
+                    continue  # già titolare + cambio da questa squadra, si passa oltre
+                etichetta_ruolo_squadra = "Titolare" if n_gia_presi == 0 else "Cambio"
+                selezionati.append((r, etichetta_ruolo_squadra))
+                conteggio_squadra[sq] = n_gia_presi + 1
+                if len(selezionati) >= 3:
+                    break
+
+            top3_nomi = [r["Nome"] for r, _ in selezionati]
+
+            if selezionati:
                 st.markdown(f"**🔥 Top abbinamento con la tua rosa ({len(miei)} giocatori presi):**")
                 st.markdown("""
                 <style>
@@ -339,13 +308,18 @@ with tab3:
                     border: 1px solid rgba(16,185,129,0.5); border-radius: 12px;
                     padding: 10px 14px; margin-bottom: 6px;
                 }
+                .abbinamento-tag {
+                    display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 8px;
+                    background: rgba(16,185,129,0.25); margin-bottom: 4px;
+                }
                 </style>
                 """, unsafe_allow_html=True)
-                cols = st.columns(len(top3))
-                for col, (_, r) in zip(cols, top3.iterrows()):
+                cols = st.columns(len(selezionati))
+                for col, (r, etichetta) in zip(cols, selezionati):
                     with col:
                         st.markdown(
-                            f'<div class="abbinamento-card"><b>🏅 {r["Nome"]}</b><br>'
+                            f'<div class="abbinamento-card"><span class="abbinamento-tag">{etichetta} {r["Squadra"]}</span><br>'
+                            f'<b>🏅 {r["Nome"]}</b><br>'
                             f'{r["Squadra"]} · {r["Prezzo"]:.0f} cr<br>'
                             f'<span style="opacity:0.8">Val/credito: {r["Valore_per_credito"]:.2f} · Abbinamento medio: {r["Compatibilità con la rosa"]:.0f}%</span></div>',
                             unsafe_allow_html=True,
@@ -375,6 +349,9 @@ with tab3:
         else:
             st.caption("La compatibilità comparirà appena avrai in rosa almeno un giocatore.")
 
+# --------------------------------------------------------------------------
+# FORMAZIONE SCHIERATA
+# --------------------------------------------------------------------------
 with tab5:
     st.caption("La formazione titolare che faresti oggi con i giocatori che hai già preso — scelta in automatico in base alla proiezione di giornata.")
 
@@ -392,7 +369,6 @@ with tab5:
         modulo_scelto = st.selectbox("Modulo", list(moduli.keys()), index=0)
         richiesti = {"P": 1, **moduli[modulo_scelto]}
 
-        # arricchisco i miei giocatori con la proiezione di giornata (Pt_giornata) dal database
         miei_nomi = [p["Nome"] for p in miei]
         miei_con_stats = df[df["Nome"].isin(miei_nomi)].copy()
 
@@ -449,8 +425,11 @@ with tab5:
             st.write("**In panchina:**")
             st.dataframe(pd.DataFrame(panchina)[["Nome", "Ruolo", "Squadra", "Pt_giornata"]], hide_index=True, use_container_width=True)
 
+# --------------------------------------------------------------------------
+# ABBINAMENTI
+# --------------------------------------------------------------------------
 with tab4:
-    st.caption("Compatibilità tra squadre (calendario/turni) — dalla tua matrice reale. Più alto = si abbinano meglio (utile per staffette portiere, coperture, o evitare due giocatori sempre 'spenti' nella stessa giornata).")
+    st.caption("Compatibilità tra squadre (calendario/turni) — dalla tua matrice reale. Più alto = si abbinano meglio.")
     matrice_compat = load_compatibilita()
 
     squadra_riferimento = st.selectbox("Parti da una squadra", sorted(matrice_compat.index.tolist()))
