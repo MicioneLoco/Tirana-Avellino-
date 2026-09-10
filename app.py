@@ -129,6 +129,21 @@ with st.sidebar:
         "Nascondi affidabilità bassa", value=True,
         help="Nasconde chi ha pochissime presenze reali — con un prezzo di 1-2 crediti, anche un punteggio modesto genera un 'valore/credito' finto-altissimo che falsa la classifica.",
     )
+    nascondi_gia_presi = st.checkbox(
+        "Nascondi già presi (asta)", value=True,
+        help="Nasconde chi hai già registrato come preso — da te o da un altro — nell'Assistente Asta.",
+    )
+
+# --------------------------------------------------------------------------
+# STATO ASTA (va calcolato PRIMA dei filtri/metriche, cosi la barra in alto
+# e la classifica riflettono subito chi e' gia' stato preso)
+# --------------------------------------------------------------------------
+if "picks" not in st.session_state:
+    st.session_state.picks = []
+
+picks = st.session_state.picks
+miei = [p for p in picks if p["Chi"] == "Io"]
+tutti_presi = [p["Nome"] for p in picks]
 
 # applica filtri
 f = df.copy()
@@ -143,6 +158,8 @@ if nascondi_indisponibili:
     f = f[~f["Indisponibile"].astype(bool)]
 if nascondi_bassa_affidabilita:
     f = f[f["Affidabilita"] != "Bassa"]
+if nascondi_gia_presi and tutti_presi:
+    f = f[~f["Nome"].isin(tutti_presi)]
 f = f.sort_values(ordina_per, ascending=False).head(top_n)
 
 # --------------------------------------------------------------------------
@@ -203,35 +220,34 @@ with tab2:
 with tab3:
     st.caption("Registra i giocatori man mano che vengono presi (da te o dagli altri) e ricevi il consiglio sulla prossima mossa.")
 
-    if "picks" not in st.session_state:
-        st.session_state.picks = []
-
-    with st.form("registra_pick", clear_on_submit=True):
-        colA, colB, colC, colD, colE = st.columns([3, 2, 1, 1, 1.5])
-        with colA:
-            nome_pick = st.selectbox("Giocatore", df["Nome"].tolist(), index=None, placeholder="Cerca...")
-        with colB:
-            chi = st.selectbox("Chi lo prende", ["Io", "Un altro"])
-        with colC:
-            prezzo_pick = st.number_input("Prezzo pagato", min_value=1, value=1, step=1)
-        with colD:
-            submit = st.form_submit_button("➕ Registra")
-        with colE:
-            reset = st.form_submit_button("🗑️ Azzera tutto")
-
-        if submit and nome_pick:
-            riga = df[df["Nome"] == nome_pick].iloc[0]
-            st.session_state.picks.append({
-                "Nome": nome_pick, "Ruolo": riga["Ruolo"], "Squadra": riga["Squadra"],
-                "Prezzo": prezzo_pick, "Chi": chi,
-            })
-        if reset:
+    colA, colB, colC, colD, colE = st.columns([3, 1.6, 1.3, 1, 1.2])
+    with colA:
+        nome_pick = st.selectbox("Giocatore", df["Nome"].tolist(), index=None, placeholder="Cerca...", key="nome_pick_sel")
+    with colB:
+        chi = st.radio("Chi lo prende", ["Io", "Un altro"], horizontal=True, key="chi_pick_sel")
+    with colC:
+        if chi == "Io":
+            prezzo_pick = st.number_input("Prezzo pagato", min_value=1, value=1, step=1, key="prezzo_pick_input")
+        else:
+            prezzo_pick = None
+            st.caption("Prezzo non necessario: non serve al tuo budget.")
+    with colD:
+        st.write("")
+        st.write("")
+        if st.button("➕ Registra", use_container_width=True):
+            if nome_pick:
+                riga = df[df["Nome"] == nome_pick].iloc[0]
+                st.session_state.picks.append({
+                    "Nome": nome_pick, "Ruolo": riga["Ruolo"], "Squadra": riga["Squadra"],
+                    "Prezzo": prezzo_pick if prezzo_pick is not None else 0, "Chi": chi,
+                })
+                st.rerun()
+    with colE:
+        st.write("")
+        st.write("")
+        if st.button("🗑️ Azzera tutto", use_container_width=True):
             st.session_state.picks = []
-
-    picks = st.session_state.picks
-    miei = [p for p in picks if p["Chi"] == "Io"]
-    tutti_presi = [p["Nome"] for p in picks]
-
+            st.rerun()
     budget_speso = sum(p["Prezzo"] for p in miei)
     budget_rimanente = budget_totale - budget_speso
     presi_per_ruolo = {r: len([p for p in miei if p["Ruolo"] == r]) for r in ["P", "D", "C", "A"]}
