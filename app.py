@@ -84,7 +84,7 @@ with st.sidebar:
 
 df.columns = [c.strip() for c in df.columns]
 
-for col, default in [("Affidabilita", "n/d"), ("Stato_titolarita", "n/d"), ("Prossimo_avversario", "-"), ("Indisponibile", False), ("Motivo_indisponibilita", "")]:
+for col, default in [("Affidabilita", "n/d"), ("Stato_titolarita", "n/d"), ("Prossimo_avversario", "-"), ("Indisponibile", False), ("Motivo_indisponibilita", ""), ("Fonte_dato", "n/d")]:
     if col not in df.columns:
         df[col] = default
 
@@ -183,7 +183,7 @@ tab3, tab5, tab1, tab2, tab4 = st.tabs(
 with tab1:
     st.dataframe(
         f[["Nome", "Ruolo", "Squadra", "Prezzo", "FVM", "Pt_giornata", "Valore_stagionale",
-           "Valore_per_credito", "Affidabilita", "Stato_titolarita", "Prossimo_avversario"]],
+           "Valore_per_credito", "Affidabilita", "Stato_titolarita", "Prossimo_avversario", "Fonte_dato"]],
         use_container_width=True,
         hide_index=True,
         column_config={
